@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/auth.controller');
 const passport = require('passport');
+require('../config/passport'); // Ensure passport is configured
 
 // Register new user
 router.post('/register', authController.register);
