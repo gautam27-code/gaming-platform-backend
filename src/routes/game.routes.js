@@ -6,8 +6,11 @@ const passport = require('passport');
 // Protect all routes in this router
 router.use(passport.authenticate('jwt', { session: false }));
 
-// Create a new game room
+// Create a new multiplayer game room
 router.post('/rooms', gameController.createRoom);
+
+// Create a single-player game vs AI
+router.post('/single-player', gameController.createSinglePlayer);
 
 // Get list of available rooms
 router.get('/rooms', gameController.getAvailableRooms);

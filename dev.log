@@ -1,0 +1,24 @@
+
+> gaming-platform-backend@1.0.0 dev
+> nodemon src/app.js
+
+[33m[nodemon] 2.0.22[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: js,mjs,json[39m
+[32m[nodemon] starting `node src/app.js`[39m
+Server running on port 5000
+MongoDB Connected: 127.0.0.1
+[0mPOST /api/auth/login [33m401[0m 24.543 ms - 30[0m
+[0mPOST /api/auth/login [33m401[0m 3.572 ms - 30[0m
+[0mPOST /api/auth/login [33m401[0m 3.359 ms - 30[0m
+[0mPOST /api/auth/login [33m401[0m 5.919 ms - 30[0m
+[0mPOST /api/auth/login [33m401[0m 3.891 ms - 30[0m
+[0mPOST /api/auth/login [33m401[0m 3.298 ms - 30[0m
+[0mPOST /api/auth/login [33m401[0m 3.153 ms - 30[0m
+[0mPOST /api/auth/login [33m401[0m 2.848 ms - 30[0m
+[0mPOST /api/auth/login [33m401[0m 4.126 ms - 30[0m
+[32m[nodemon] restarting due to changes...[39m
+[32m[nodemon] starting `node src/app.js`[39m
+Server running on port 5000
+MongoDB Connected: 127.0.0.1

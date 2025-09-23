@@ -12,6 +12,9 @@ const Game = require('./models/game.model');
 // Load environment variables
 dotenv.config();
 
+// Ensure passport strategies are registered
+require('./config/passport');
+
 // Create Express app
 const app = express();
 
@@ -20,7 +23,7 @@ connectDB();
 
 // Middleware
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: (origin, callback) => callback(null, true), // allow all origins in dev
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -46,10 +49,20 @@ const server = app.listen(PORT, () => {
 // Socket.io setup
 const io = require('socket.io')(server, {
   cors: {
-    origin: process.env.CLIENT_URL,
+    origin: (origin, callback) => callback(null, true),
     methods: ['GET', 'POST']
   }
 });
+
+async function recalcWinRate(userId) {
+  try {
+    const u = await User.findById(userId);
+    if (u) {
+      u.calculateWinRate();
+      await u.save();
+    }
+  } catch (_) {}
+}
 
 // Socket.io middleware
 io.use(async (socket, next) => {
@@ -95,21 +108,65 @@ io.on('connection', (socket) => {
         return socket.emit('error', { message: 'Game not found' });
       }
 
-      // Update game state (implementation depends on game type)
+      if (game.status !== 'in-progress') {
+        return socket.emit('error', { message: 'Game is not in progress' });
+      }
+
+      if (!game.currentTurn || !game.currentTurn.equals(socket.user._id)) {
+        return socket.emit('error', { message: 'Not your turn' });
+      }
+
+      // Apply move
       const moveSuccess = game.makeMove(socket.user._id, position);
       if (!moveSuccess) {
         return socket.emit('error', { message: 'Invalid move' });
       }
 
+      // After move, check outcome
+      if (game.checkWin()) {
+        game.status = 'completed';
+        game.winner = socket.user._id;
+        game.result = 'win';
+
+        // Update stats for multiplayer winner/loser
+        await User.findByIdAndUpdate(socket.user._id, {
+          $inc: { 'stats.wins': 1, 'stats.matchesPlayed': 1 },
+          currentGame: null
+        });
+        await recalcWinRate(socket.user._id);
+
+        const opp = game.players.find(p => p.user && !p.user.equals(socket.user._id));
+        if (opp && opp.user) {
+          await User.findByIdAndUpdate(opp.user, {
+            $inc: { 'stats.losses': 1, 'stats.matchesPlayed': 1 },
+            currentGame: null
+          });
+          await recalcWinRate(opp.user);
+        }
+      } else if (typeof game.isDraw === 'function' && game.isDraw()) {
+        game.status = 'completed';
+        game.result = 'draw';
+        const playerIds = game.players.map(p => p.user).filter(Boolean);
+        await User.updateMany(
+          { _id: { $in: playerIds } },
+          { $inc: { 'stats.ties': 1, 'stats.matchesPlayed': 1 }, $set: { currentGame: null } }
+        );
+        await Promise.all(playerIds.map(id => recalcWinRate(id)));
+      } else {
+        // Switch turns to opponent
+        const nextPlayer = game.players.find(p => p.user && !p.user.equals(socket.user._id));
+        if (nextPlayer) {
+          game.currentTurn = nextPlayer.user;
+        }
+      }
+
+      await game.save();
+
       // Broadcast updated game state to all players in the room
       io.to(gameId).emit('game-update', game);
 
-      // Check for game end conditions
-      if (game.checkWin()) {
-        io.to(gameId).emit('game-over', {
-          winner: socket.user._id,
-          game
-        });
+      if (game.status === 'completed') {
+        io.to(gameId).emit('game-over', { winner: game.winner, game });
       }
     } catch (error) {
       socket.emit('error', { message: 'Server error' });
