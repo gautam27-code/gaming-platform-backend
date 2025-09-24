@@ -31,7 +31,11 @@ connectDB();
 
 // Middleware
 app.use(cors({
+<<<<<<< HEAD
   origin: (origin, callback) => callback(null, true), // allow all origins in dev
+=======
+  // origin: process.env.CLIENT_URL || 'http://localhost:3000',
+>>>>>>> 4bbc3ab3e730e8f5b454b2f73b73c2accc98370b
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']

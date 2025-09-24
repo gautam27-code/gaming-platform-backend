@@ -1,0 +1,3 @@
+[submodule "mgaming-dashboard"]
+	path = mgaming-dashboard
+	url = https://github.com/gautam27-code/multiplayer-gaming-platform
