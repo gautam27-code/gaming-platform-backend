@@ -31,11 +31,7 @@ connectDB();
 
 // Middleware
 app.use(cors({
-<<<<<<< HEAD
   origin: (origin, callback) => callback(null, true), // allow all origins in dev
-=======
-  // origin: process.env.CLIENT_URL || 'http://localhost:3000',
->>>>>>> 4bbc3ab3e730e8f5b454b2f73b73c2accc98370b
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -73,7 +69,9 @@ async function recalcWinRate(userId) {
       u.calculateWinRate();
       await u.save();
     }
-  } catch (_) {}
+  } catch (error) {
+    console.error('Error recalculating win rate:', error);
+  }
 }
 
 // Socket.io middleware
@@ -94,6 +92,7 @@ io.use(async (socket, next) => {
     socket.user = user;
     next();
   } catch (error) {
+    console.error('Socket auth error:', error);
     next(new Error('Authentication error'));
   }
 });
@@ -116,7 +115,6 @@ io.on('connection', (socket) => {
       socket.leave(gameId);
       const game = await Game.findById(gameId);
       if (!game) return;
-      const before = game.players.length;
       game.players = game.players.filter(p => !(p.user && p.user.equals(socket.user._id)));
       if (game.players.length === 0) {
         await game.deleteOne();
@@ -128,7 +126,9 @@ io.on('connection', (socket) => {
       }
       await game.save();
       io.to(gameId).emit('game-update', game);
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error leaving game:', e);
+    }
   });
 
   // Handle game moves
@@ -202,6 +202,7 @@ io.on('connection', (socket) => {
         io.to(gameId).emit('game-over', { winner: game.winner, game });
       }
     } catch (error) {
+      console.error('Error making move:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
@@ -233,6 +234,7 @@ io.on('connection', (socket) => {
         }
       }
     } catch (error) {
+      console.error('Error on player-ready:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
