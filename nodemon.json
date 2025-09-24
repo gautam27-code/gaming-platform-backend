@@ -1,0 +1,14 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": [
+    "node_modules",
+    "**/*.test.js",
+    "**/*.spec.js",
+    "logs/*",
+    "*.log",
+    "dev.log"
+  ],
+  "legacyWatch": true,
+  "exec": "node src/app.js"
+}

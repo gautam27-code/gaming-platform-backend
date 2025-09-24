@@ -12,6 +12,14 @@ const Game = require('./models/game.model');
 // Load environment variables
 dotenv.config();
 
+// Global error handlers to prevent hard crashes during dev
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+
 // Ensure passport strategies are registered
 require('./config/passport');
 
@@ -96,6 +104,27 @@ io.on('connection', (socket) => {
   // Join game room
   socket.on('join-game', (gameId) => {
     socket.join(gameId);
+  });
+
+  // Leave game room (socket event)
+  socket.on('leave-game', async (gameId) => {
+    try {
+      socket.leave(gameId);
+      const game = await Game.findById(gameId);
+      if (!game) return;
+      const before = game.players.length;
+      game.players = game.players.filter(p => !(p.user && p.user.equals(socket.user._id)));
+      if (game.players.length === 0) {
+        await game.deleteOne();
+        return;
+      }
+      if (game.status === 'in-progress') {
+        game.status = 'completed';
+        game.result = 'abandoned';
+      }
+      await game.save();
+      io.to(gameId).emit('game-update', game);
+    } catch (e) {}
   });
 
   // Handle game moves
@@ -214,22 +243,24 @@ io.on('connection', (socket) => {
       lastActive: new Date()
     });
 
-    // Handle any active games
-    const game = await Game.findOne({
-      'players.user': socket.user._id,
-      status: 'in-progress'
-    });
-
-    if (game) {
-      game.status = 'completed';
-      game.result = 'abandoned';
-      await game.save();
-
-      // Notify other players
-      io.to(game._id.toString()).emit('player-disconnected', {
-        playerId: socket.user._id,
-        game
-      });
+    // If user was in any game
+    const games = await Game.find({ 'players.user': socket.user._id });
+    for (const game of games) {
+      if (game.status === 'in-progress') {
+        game.status = 'completed';
+        game.result = 'abandoned';
+        await game.save();
+        io.to(game._id.toString()).emit('player-disconnected', { playerId: socket.user._id, game });
+      } else if (game.status === 'waiting') {
+        // Remove player from waiting room
+        game.players = game.players.filter(p => !(p.user && p.user.equals(socket.user._id)));
+        if (game.players.length === 0) {
+          await game.deleteOne();
+        } else {
+          await game.save();
+          io.to(game._id.toString()).emit('game-update', game);
+        }
+      }
     }
   });
 });

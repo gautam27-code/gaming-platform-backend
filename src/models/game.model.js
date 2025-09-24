@@ -69,11 +69,14 @@ function ensureTicTacToeSetup(game) {
   if (game.type !== 'tic-tac-toe') return;
   if (!Array.isArray(game.board) || game.board.length !== 9) {
     game.board = Array(9).fill(null);
+    if (typeof game.markModified === 'function') game.markModified('board');
   }
   // Assign symbols to first two players if missing
   if (game.players && game.players.length > 0) {
-    if (!game.players[0].symbol) game.players[0].symbol = 'X';
-    if (game.players[1] && !game.players[1].symbol) game.players[1].symbol = 'O';
+    let changed = false;
+    if (!game.players[0].symbol) { game.players[0].symbol = 'X'; changed = true; }
+    if (game.players[1] && !game.players[1].symbol) { game.players[1].symbol = 'O'; changed = true; }
+    if (changed && typeof game.markModified === 'function') game.markModified('players');
   }
 }
 
@@ -111,6 +114,8 @@ gameSchema.methods.makeMove = function(userId, position) {
 
     // Apply move
     this.board[index] = symbol;
+    // Mixed type requires explicit markModified for nested changes
+    if (typeof this.markModified === 'function') this.markModified('board');
     this.moves.push({ player: userId, position: index });
 
     return true;

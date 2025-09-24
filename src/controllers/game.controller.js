@@ -2,6 +2,24 @@ const Game = require('../models/game.model');
 const User = require('../models/user.model');
 const mongoose = require('mongoose');
 
+// Helper function to check for a win in tic-tac-toe
+function checkWin(board) {
+  const lines = [
+    [0,1,2],[3,4,5],[6,7,8],
+    [0,3,6],[1,4,7],[2,5,8],
+    [0,4,8],[2,4,6]
+  ];
+  return lines.some(([a,b,c]) => 
+    board[a] && board[a] === board[b] && board[a] === board[c]
+  );
+}
+
+// Helper function to check for a draw
+function checkDraw(board) {
+  return board.every(cell => cell !== null);
+}
+
+// Helper function to recalculate win rate
 async function recalcWinRate(userId) {
   try {
     const u = await User.findById(userId);
@@ -12,40 +30,73 @@ async function recalcWinRate(userId) {
   } catch (_) {}
 }
 
-// Utility: compute AI move for tic-tac-toe (simple strategy)
-function computeAIMove(board, aiSymbol, humanSymbol) {
+// Utility: compute AI move for tic-tac-toe
+function computeAIMove(board, aiSymbol = 'O', humanSymbol = 'X') {
   const lines = [
     [0,1,2],[3,4,5],[6,7,8],
     [0,3,6],[1,4,7],[2,5,8],
     [0,4,8],[2,4,6]
   ];
+
+  // Helper to check if a line has potential
+  const checkLine = (line, symbol, empty = 1) => {
+    const counts = line.reduce((acc, val) => {
+      if (val === symbol) acc.symbol++;
+      if (val === null) acc.empty++;
+      return acc;
+    }, { symbol: 0, empty: 0 });
+    return counts.symbol === (3 - empty) && counts.empty === empty;
+  };
+
   // 1) Win if possible
   for (const [a,b,c] of lines) {
-    const line = [board[a], board[b], board[c]];
-    if (line.filter(v => v === aiSymbol).length === 2 && line.includes(null)) {
+    const lineVals = [board[a], board[b], board[c]];
+    if (checkLine(lineVals, aiSymbol)) {
       if (board[a] === null) return a;
       if (board[b] === null) return b;
       if (board[c] === null) return c;
     }
   }
+
   // 2) Block human win
   for (const [a,b,c] of lines) {
-    const line = [board[a], board[b], board[c]];
-    if (line.filter(v => v === humanSymbol).length === 2 && line.includes(null)) {
+    const lineVals = [board[a], board[b], board[c]];
+    if (checkLine(lineVals, humanSymbol)) {
       if (board[a] === null) return a;
       if (board[b] === null) return b;
       if (board[c] === null) return c;
     }
   }
-  // 3) Center
+
+  // 3) Create fork opportunity or block opponent's fork
+  for (const [a,b,c] of lines) {
+    const lineVals = [board[a], board[b], board[c]];
+    if (checkLine(lineVals, aiSymbol, 2)) {
+      if (board[a] === null) return a;
+      if (board[b] === null) return b;
+      if (board[c] === null) return c;
+    }
+  }
+
+  // 4) Center
   if (board[4] === null) return 4;
-  // 4) Corners
+
+  // 5) Opposite corner of human
+  const oppositeCorners = [[0,8], [2,6]];
+  for (const [a,b] of oppositeCorners) {
+    if (board[a] === humanSymbol && board[b] === null) return b;
+    if (board[b] === humanSymbol && board[a] === null) return a;
+  }
+
+  // 6) Empty corner
   const corners = [0,2,6,8].filter(i => board[i] === null);
-  if (corners.length) return corners[0];
-  // 5) Sides
+  if (corners.length) return corners[Math.floor(Math.random() * corners.length)];
+
+  // 7) Empty side
   const sides = [1,3,5,7].filter(i => board[i] === null);
-  if (sides.length) return sides[0];
-  return -1;
+  if (sides.length) return sides[Math.floor(Math.random() * sides.length)];
+
+  return -1; // No moves available
 }
 
 // Create a new game room
@@ -105,6 +156,8 @@ exports.createSinglePlayer = async (req, res) => {
       ],
       board: Array(9).fill(null),
       currentTurn: req.user._id,
+      // give single-player games a unique roomCode to avoid unique index collisions
+      roomCode: `SP-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
     });
 
     await game.save();
@@ -132,20 +185,29 @@ exports.joinRoom = async (req, res) => {
       return res.status(400).json({ message: 'Game already in progress' });
     }
 
-    if (game.isFull()) {
-      return res.status(400).json({ message: 'Game room is full' });
+    // If user already in players, don't add again
+    const already = game.players.find(p => p.user && p.user.equals(req.user._id));
+    if (already) {
+      // Ensure symbol assignment is consistent
+      if (!already.symbol && game.type === 'tic-tac-toe') {
+        already.symbol = game.players[0]?.symbol === 'X' ? 'O' : 'X' || 'X';
+      }
+    } else {
+      if (game.isFull()) {
+        return res.status(400).json({ message: 'Game room is full' });
+      }
+      // Add player to game
+      game.players.push({
+        user: req.user._id,
+        symbol: game.type === 'tic-tac-toe' ? (game.players[0]?.symbol === 'X' ? 'O' : 'X') : undefined,
+        ready: false
+      });
     }
-
-    // Add player to game
-    game.players.push({
-      user: req.user._id,
-      symbol: game.type === 'tic-tac-toe' ? 'O' : undefined,
-      ready: false
-    });
 
     // Initialize board for tic-tac-toe
     if (game.type === 'tic-tac-toe' && (!Array.isArray(game.board) || game.board.length !== 9)) {
       game.board = Array(9).fill(null);
+      if (typeof game.markModified === 'function') game.markModified('board');
     }
 
     // Update user's current game
@@ -156,7 +218,7 @@ exports.joinRoom = async (req, res) => {
     await game.save();
 
     res.json({
-      message: 'Joined game room successfully',
+      message: already ? 'Rejoined game room' : 'Joined game room successfully',
       game
     });
   } catch (error) {
@@ -167,11 +229,45 @@ exports.joinRoom = async (req, res) => {
   }
 };
 
+// Leave a game room (remove player while waiting)
+exports.leaveRoom = async (req, res) => {
+  try {
+    const { gameId } = req.params;
+    const game = await Game.findById(gameId);
+    if (!game) return res.status(404).json({ message: 'Game not found' });
+
+    // Remove player entry
+    const before = game.players.length;
+    game.players = game.players.filter(p => !(p.user && p.user.equals(req.user._id)));
+
+    // Clear current game for user
+    await User.findByIdAndUpdate(req.user._id, { currentGame: null });
+
+    if (game.players.length === 0) {
+      await game.deleteOne();
+      return res.json({ message: 'Left room and room removed (empty)' });
+    }
+
+    // If game was waiting, keep waiting. If in-progress and a player leaves, mark abandoned.
+    if (game.status === 'in-progress') {
+      game.status = 'completed';
+      game.result = 'abandoned';
+      await game.save();
+      return res.json({ message: 'Left game (abandoned)', game });
+    }
+
+    await game.save();
+    return res.json({ message: before !== game.players.length ? 'Left room' : 'Not in room', game });
+  } catch (error) {
+    res.status(500).json({ message: 'Error leaving room', error: error.message });
+  }
+};
+
 // Make a move in the game
 exports.makeMove = async (req, res) => {
   try {
     const { gameId } = req.params;
-    const { position } = req.body;
+    const { row, col } = req.body;
     
     const game = await Game.findById(gameId);
     
@@ -186,122 +282,111 @@ exports.makeMove = async (req, res) => {
     if (!game.currentTurn || !game.currentTurn.equals(req.user._id)) {
       return res.status(400).json({ message: 'Not your turn' });
     }
-
-    // Make the human move
-    const moveSuccess = game.makeMove(req.user._id, position);
-    if (!moveSuccess) {
-      return res.status(400).json({ message: 'Invalid move' });
+    
+    // Validate row/col inputs
+    if (typeof row !== 'number' || typeof col !== 'number' ||
+        row < 0 || row >= 3 || col < 0 || col >= 3) {
+      return res.status(400).json({ message: 'Invalid row or column' });
     }
 
-    // After human move, check for outcome
-    if (game.checkWin()) {
+    // Convert row/col to position for tic-tac-toe
+    const position = row * 3 + col;
+
+    // Check if position is already taken
+    if (game.board[position] !== null) {
+      return res.status(400).json({ message: 'Position already taken' });
+    }
+
+    // Make human move
+    game.board[position] = 'X';
+    if (typeof game.markModified === 'function') game.markModified('board');
+    game.moves.push({ player: req.user._id, position });
+
+    // Check if human won
+    if (checkWin(game.board)) {
       game.status = 'completed';
       game.winner = req.user._id;
       game.result = 'win';
+      game.currentTurn = null;
 
+      // Update stats for human win
       await User.findByIdAndUpdate(req.user._id, {
         $inc: {
           'stats.wins': 1,
           'stats.matchesPlayed': 1
         },
-        currentGame: null
+        $set: { currentGame: null }
       });
       await recalcWinRate(req.user._id);
+    }
+    // Check for draw after human move
+    else if (checkDraw(game.board)) {
+      game.status = 'completed';
+      game.result = 'draw';
+      game.currentTurn = null;
 
-      // In multiplayer, update opponent as well
-      if (game.mode === 'multi') {
-        const opp = game.players.find(p => p.user && !p.user.equals(req.user._id));
-        if (opp && opp.user) {
-          await User.findByIdAndUpdate(opp.user, {
+      // Update stats for draw
+      await User.findByIdAndUpdate(req.user._id, {
+        $inc: {
+          'stats.ties': 1,
+          'stats.matchesPlayed': 1
+        },
+        $set: { currentGame: null }
+      });
+      await recalcWinRate(req.user._id);
+    }
+    // If game continues, handle AI move in single-player mode
+    else if (game.mode === 'single') {
+      const aiIndex = computeAIMove(game.board);
+      if (aiIndex >= 0) {
+        game.board[aiIndex] = 'O';
+        if (typeof game.markModified === 'function') game.markModified('board');
+        game.moves.push({ player: 'ai', position: aiIndex });
+
+        // Check if AI won
+        if (checkWin(game.board)) {
+          game.status = 'completed';
+          game.winner = null; // AI win
+          game.result = 'win';
+          game.currentTurn = null;
+
+          // Update stats for AI win
+          await User.findByIdAndUpdate(req.user._id, {
             $inc: {
               'stats.losses': 1,
               'stats.matchesPlayed': 1
             },
-            currentGame: null
+            $set: { currentGame: null }
           });
-          await recalcWinRate(opp.user);
+          await recalcWinRate(req.user._id);
         }
-      }
-    } else if (typeof game.isDraw === 'function' && game.isDraw()) {
-      game.status = 'completed';
-      game.result = 'draw';
+        // Check for draw after AI move
+        else if (checkDraw(game.board)) {
+          game.status = 'completed';
+          game.result = 'draw';
+          game.currentTurn = null;
 
-      if (game.mode === 'multi') {
-        const playerIds = game.players.map(p => p.user).filter(Boolean);
-        await User.updateMany(
-          { _id: { $in: playerIds } },
-          {
+          // Update stats for draw
+          await User.findByIdAndUpdate(req.user._id, {
             $inc: {
               'stats.ties': 1,
               'stats.matchesPlayed': 1
             },
             $set: { currentGame: null }
-          }
-        );
-        await Promise.all(playerIds.map((id) => recalcWinRate(id)));
-      } else {
-        // In single-player, only update human stats
-        await User.findByIdAndUpdate(req.user._id, {
-          $inc: {
-            'stats.ties': 1,
-            'stats.matchesPlayed': 1
-          },
-          currentGame: null
-        });
-        await recalcWinRate(req.user._id);
+          });
+          await recalcWinRate(req.user._id);
+        }
+        // Game continues
+        else {
+          game.currentTurn = req.user._id;
+        }
       }
-    } else {
-      // Determine next player
-      const opponent = game.players.find(
-        p => !p.user || (p.user && !p.user.equals(req.user._id))
-      );
-
-      if (game.mode === 'single' && opponent && opponent.ai) {
-        // AI turn for tic-tac-toe
-        if (game.type === 'tic-tac-toe') {
-          // Compute AI move
-          const aiIndex = computeAIMove(game.board, opponent.symbol || 'O', 'X');
-          if (aiIndex >= 0 && game.board[aiIndex] === null) {
-            game.board[aiIndex] = opponent.symbol || 'O';
-            game.moves.push({ player: 'ai', position: aiIndex });
-          }
-
-          // Check outcome after AI move
-          if (game.checkWin()) {
-            game.status = 'completed';
-            game.winner = undefined; // AI winner (no user)
-            game.result = 'win';
-
-            // Human lost
-            await User.findByIdAndUpdate(req.user._id, {
-              $inc: {
-                'stats.losses': 1,
-                'stats.matchesPlayed': 1
-              },
-              currentGame: null
-            });
-            await recalcWinRate(req.user._id);
-          } else if (typeof game.isDraw === 'function' && game.isDraw()) {
-            game.status = 'completed';
-            game.result = 'draw';
-
-            await User.findByIdAndUpdate(req.user._id, {
-              $inc: {
-                'stats.ties': 1,
-                'stats.matchesPlayed': 1
-              },
-              currentGame: null
-            });
-          } else {
-            // Switch back to human
-            game.currentTurn = req.user._id;
-          }
-        }
-      } else {
-        // Multiplayer: switch to the other user
-        if (opponent && opponent.user) {
-          game.currentTurn = opponent.user;
-        }
+    }
+    // In multiplayer, switch turn to the other player
+    else {
+      const opponent = game.players.find(p => !p.user.equals(req.user._id));
+      if (opponent) {
+        game.currentTurn = opponent.user;
       }
     }
 
@@ -312,9 +397,10 @@ exports.makeMove = async (req, res) => {
       game
     });
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error making move', 
-      error: error.message 
+    console.error('Error making move:', error);
+    res.status(500).json({
+      message: 'Error making move',
+      error: error.message
     });
   }
 };
@@ -344,13 +430,14 @@ exports.getGameState = async (req, res) => {
 // Get list of available rooms
 exports.getAvailableRooms = async (req, res) => {
   try {
+    // Return all multiplayer rooms that are waiting or already in-progress (for visibility)
     const rooms = await Game.find({ 
       mode: 'multi',
-      status: 'waiting',
-      'players.1': { $exists: false } // Only rooms with 1 player
+      status: { $in: ['waiting', 'in-progress'] }
     })
+    .sort({ createdAt: -1 })
     .populate('players.user', 'username')
-    .select('name type roomCode players createdAt');
+    .select('name type roomCode players createdAt status');
 
     res.json(rooms);
   } catch (error) {
@@ -384,6 +471,7 @@ exports.setPlayerReady = async (req, res) => {
     // Initialize board/symbols for tic-tac-toe
     if (game.type === 'tic-tac-toe' && (!Array.isArray(game.board) || game.board.length !== 9)) {
       game.board = Array(9).fill(null);
+      if (typeof game.markModified === 'function') game.markModified('board');
     }
 
     // Check if all players are ready

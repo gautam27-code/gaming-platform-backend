@@ -18,6 +18,9 @@ router.get('/rooms', gameController.getAvailableRooms);
 // Join a game room
 router.post('/rooms/:roomCode/join', gameController.joinRoom);
 
+// Leave a game room
+router.delete('/:gameId/leave', gameController.leaveRoom);
+
 // Get game state
 router.get('/:gameId', gameController.getGameState);
 
