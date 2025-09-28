@@ -459,7 +459,7 @@ exports.setPlayerReady = async (req, res) => {
     }
 
     const player = game.players.find(
-      p => p.user && p.user.equals(req.user._id)
+      p => p.user && (typeof p.user.equals === 'function' ? p.user.equals(req.user._id) : p.user.toString() === req.user._id.toString())
     );
 
     if (!player) {
@@ -474,10 +474,12 @@ exports.setPlayerReady = async (req, res) => {
       if (typeof game.markModified === 'function') game.markModified('board');
     }
 
-    // Check if all players are ready
-    if (game.players.length > 1 && game.players.every(p => p.ready)) {
+    // If host (first player) is ready and there are at least 2 players, start immediately
+    const hostUserId = game.players[0]?.user;
+    const isHost = !!hostUserId && hostUserId.equals(req.user._id);
+    if (isHost && game.players.length > 1) {
       game.status = 'in-progress';
-      game.currentTurn = game.players[0].user; // First player starts
+      game.currentTurn = game.players[0].user; // Host starts
     }
 
     await game.save();
@@ -486,10 +488,9 @@ exports.setPlayerReady = async (req, res) => {
       message: 'Player ready status updated',
       game
     });
-  } catch (error) {
+    } catch (error) {
     res.status(500).json({ 
       message: 'Error updating ready status', 
       error: error.message 
     });
-  }
-};
+  }};

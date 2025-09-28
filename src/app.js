@@ -12,7 +12,6 @@ const Game = require('./models/game.model');
 // Load environment variables
 dotenv.config();
 
-// Global error handlers to prevent hard crashes during dev
 process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });
@@ -20,16 +19,12 @@ process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
 });
 
-// Ensure passport strategies are registered
 require('./config/passport');
 
-// Create Express app
 const app = express();
 
-// Connect to MongoDB
 connectDB();
 
-// Middleware
 app.use(cors({
   origin: (origin, callback) => callback(null, true), // allow all origins in dev
   credentials: true,
@@ -40,21 +35,17 @@ app.use(express.json());
 app.use(morgan('dev'));
 app.use(passport.initialize());
 
-// Routes
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/users', require('./routes/user.routes'));
 app.use('/api/games', require('./routes/game.routes'));
 
-// Error handling
 app.use(errorHandler);
 
-// Start server
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-// Socket.io setup
 const io = require('socket.io')(server, {
   cors: {
     origin: (origin, callback) => callback(null, true),
@@ -74,7 +65,6 @@ async function recalcWinRate(userId) {
   }
 }
 
-// Socket.io middleware
 io.use(async (socket, next) => {
   try {
     const token = socket.handshake.auth.token;
@@ -97,19 +87,24 @@ io.use(async (socket, next) => {
   }
 });
 
-// Socket.io event handlers
+function idsEqual(a, b) {
+  if (!a || !b) return false;
+  try {
+    if (typeof a.equals === 'function') return a.equals(b);
+    if (typeof b.equals === 'function') return b.equals(a);
+  } catch (_) {}
+  return a.toString() === b.toString();
+}
+
 io.on('connection', (socket) => {
   console.log('User connected:', socket.user.username);
 
-  // Update user's online status
   User.findByIdAndUpdate(socket.user._id, { isOnline: true });
 
-  // Join game room
   socket.on('join-game', (gameId) => {
     socket.join(gameId);
   });
 
-  // Leave game room (socket event)
   socket.on('leave-game', async (gameId) => {
     try {
       socket.leave(gameId);
@@ -131,7 +126,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle game moves
   socket.on('make-move', async (data) => {
     try {
       const { gameId, position } = data;
@@ -149,19 +143,16 @@ io.on('connection', (socket) => {
         return socket.emit('error', { message: 'Not your turn' });
       }
 
-      // Apply move
       const moveSuccess = game.makeMove(socket.user._id, position);
       if (!moveSuccess) {
         return socket.emit('error', { message: 'Invalid move' });
       }
 
-      // After move, check outcome
       if (game.checkWin()) {
         game.status = 'completed';
         game.winner = socket.user._id;
         game.result = 'win';
 
-        // Update stats for multiplayer winner/loser
         await User.findByIdAndUpdate(socket.user._id, {
           $inc: { 'stats.wins': 1, 'stats.matchesPlayed': 1 },
           currentGame: null
@@ -186,7 +177,6 @@ io.on('connection', (socket) => {
         );
         await Promise.all(playerIds.map(id => recalcWinRate(id)));
       } else {
-        // Switch turns to opponent
         const nextPlayer = game.players.find(p => p.user && !p.user.equals(socket.user._id));
         if (nextPlayer) {
           game.currentTurn = nextPlayer.user;
@@ -195,7 +185,6 @@ io.on('connection', (socket) => {
 
       await game.save();
 
-      // Broadcast updated game state to all players in the room
       io.to(gameId).emit('game-update', game);
 
       if (game.status === 'completed') {
@@ -207,7 +196,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle player ready status
   socket.on('player-ready', async (gameId) => {
     try {
       const game = await Game.findById(gameId);
@@ -215,18 +203,26 @@ io.on('connection', (socket) => {
         return socket.emit('error', { message: 'Game not found' });
       }
 
-      const player = game.players.find(p => p.user.equals(socket.user._id));
+      const player = game.players.find(p => p.user && idsEqual(p.user, socket.user._id));
       if (player) {
         player.ready = true;
-        await game.save();
+        const hostUserId = game.players[0]?.user;
+        const isHost = !!hostUserId && idsEqual(hostUserId, socket.user._id);
 
-        // If all players are ready, start the game
-        if (game.players.length > 1 && game.players.every(p => p.ready)) {
+        if (game.type === 'tic-tac-toe' && (!Array.isArray(game.board) || game.board.length !== 9)) {
+          game.board = Array(9).fill(null);
+          if (typeof game.markModified === 'function') game.markModified('board');
+        }
+
+        if (isHost && game.players.length > 1) {
           game.status = 'in-progress';
-          game.currentTurn = game.players[0].user;
+          game.currentTurn = game.players[0].user; // host starts
           await game.save();
+
           io.to(gameId).emit('game-start', game);
+          io.to(gameId).emit('game-update', game);
         } else {
+          await game.save();
           io.to(gameId).emit('player-ready-update', {
             playerId: socket.user._id,
             game
@@ -234,22 +230,19 @@ io.on('connection', (socket) => {
         }
       }
     } catch (error) {
-      console.error('Error on player-ready:', error);
       socket.emit('error', { message: 'Server error' });
     }
   });
+  });
 
-  // Handle disconnection
   socket.on('disconnect', async () => {
     console.log('User disconnected:', socket.user.username);
     
-    // Update user's online status and last active time
     await User.findByIdAndUpdate(socket.user._id, {
       isOnline: false,
       lastActive: new Date()
     });
 
-    // If user was in any game
     const games = await Game.find({ 'players.user': socket.user._id });
     for (const game of games) {
       if (game.status === 'in-progress') {
@@ -258,7 +251,7 @@ io.on('connection', (socket) => {
         await game.save();
         io.to(game._id.toString()).emit('player-disconnected', { playerId: socket.user._id, game });
       } else if (game.status === 'waiting') {
-        // Remove player from waiting room
+
         game.players = game.players.filter(p => !(p.user && p.user.equals(socket.user._id)));
         if (game.players.length === 0) {
           await game.deleteOne();
@@ -269,6 +262,5 @@ io.on('connection', (socket) => {
       }
     }
   });
-});
 
 module.exports = app;
