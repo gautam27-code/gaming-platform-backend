@@ -26,7 +26,7 @@ const app = express();
 connectDB();
 
 app.use(cors({
-  origin: (origin, callback) => callback(null, true), // allow all origins in dev
+  origin: ["https://multiplayer-gaming-platform.vercel.app", "http://localhost:3000"],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -48,14 +48,14 @@ app.use('/api/games', require('./routes/game.routes'));
 
 app.use(errorHandler);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
 const io = require('socket.io')(server, {
   cors: {
-    origin: (origin, callback) => callback(null, true),
+    origin: ["https://multiplayer-gaming-platform.vercel.app", "http://localhost:3000"],
     methods: ['GET', 'POST']
   }
 });
