@@ -122,9 +122,9 @@ MIT
 ---
 
 ## 🙋‍♂️ Maintainers
-
-**Chetan B**  
-[LinkedIn](Your LinkedIn URL) | [Twitter](Your Twitter URL) | [Portfolio](Your Portfolio URL)
+**Gautam Jain**
+**Chetan Bansal**
+**Bhumika Jindal**
 
 ---
 
