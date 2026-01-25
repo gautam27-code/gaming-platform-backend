@@ -35,6 +35,13 @@ app.use(express.json());
 app.use(morgan('dev'));
 app.use(passport.initialize());
 
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "Backend is running 🚀"
+  });
+});
+
 app.use('/api/auth', require('./routes/auth.routes'));
 app.use('/api/users', require('./routes/user.routes'));
 app.use('/api/games', require('./routes/game.routes'));
