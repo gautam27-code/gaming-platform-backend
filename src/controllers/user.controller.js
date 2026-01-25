@@ -13,9 +13,9 @@ exports.getProfile = async (req, res) => {
 
     res.json(user);
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error fetching user profile', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching user profile',
+      error: error.message
     });
   }
 };
@@ -44,14 +44,14 @@ exports.updateStats = async (req, res) => {
     user.calculateWinRate();
     await user.save();
 
-    res.json({ 
-      message: 'Stats updated successfully', 
-      stats: user.stats 
+    res.json({
+      message: 'Stats updated successfully',
+      stats: user.stats
     });
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error updating stats', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error updating stats',
+      error: error.message
     });
   }
 };
@@ -85,9 +85,9 @@ exports.sendFriendRequest = async (req, res) => {
     await friend.save();
     res.json({ message: 'Friend request sent successfully' });
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error sending friend request', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error sending friend request',
+      error: error.message
     });
   }
 };
@@ -123,13 +123,13 @@ exports.handleFriendRequest = async (req, res) => {
     request.remove();
     await user.save();
 
-    res.json({ 
-      message: `Friend request ${action}ed successfully` 
+    res.json({
+      message: `Friend request ${action}ed successfully`
     });
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error handling friend request', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error handling friend request',
+      error: error.message
     });
   }
 };
@@ -142,9 +142,9 @@ exports.getFriends = async (req, res) => {
 
     res.json(user.friends);
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error fetching friends list', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching friends list',
+      error: error.message
     });
   }
 };
@@ -157,11 +157,12 @@ exports.getLeaderboard = async (req, res) => {
       .sort({ 'stats.winRate': -1, 'stats.matchesPlayed': -1 })
       .limit(100);
 
+    res.set('Cache-Control', 'no-store');
     res.json(leaderboard);
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error fetching leaderboard', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching leaderboard',
+      error: error.message
     });
   }
 };

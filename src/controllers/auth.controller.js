@@ -33,7 +33,7 @@ exports.register = async (req, res) => {
         { username: { $regex: new RegExp('^' + username + '$', 'i') } }
       ]
     });
-    
+
     if (existingUser) {
       return res.status(400).json({ message: 'User with this email or username already exists' });
     }

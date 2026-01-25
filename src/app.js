@@ -74,7 +74,7 @@ io.use(async (socket, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const user = await User.findById(decoded.id);
-    
+
     if (!user) {
       return next(new Error('Authentication error'));
     }
@@ -92,7 +92,7 @@ function idsEqual(a, b) {
   try {
     if (typeof a.equals === 'function') return a.equals(b);
     if (typeof b.equals === 'function') return b.equals(a);
-  } catch (_) {}
+  } catch (_) { }
   return a.toString() === b.toString();
 }
 
@@ -233,11 +233,48 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Server error' });
     }
   });
+
+  socket.on('play-again', async (gameId) => {
+    try {
+      const game = await Game.findById(gameId);
+      if (!game) {
+        return socket.emit('error', { message: 'Game not found' });
+      }
+
+      const player = game.players.find(p => p.user && idsEqual(p.user, socket.user._id));
+      if (!player) {
+        return socket.emit('error', { message: 'Player not in game' });
+      }
+
+      // Only allow reset if game is completed
+      if (game.status !== 'completed') {
+        // Optional: allow reset if stuck? For now stick to completed.
+        // return socket.emit('error', { message: 'Game not finished' });
+      }
+
+      // Reset game state
+      game.status = 'in-progress';
+      game.board = Array(9).fill(null);
+      if (typeof game.markModified === 'function') game.markModified('board');
+      game.winner = null;
+      game.result = undefined;
+      game.moves = [];
+      game.currentTurn = game.players[0]?.user; // Host starts
+
+      await game.save();
+
+      io.to(gameId).emit('game-start', game);
+      io.to(gameId).emit('game-update', game);
+
+    } catch (error) {
+      console.error('Error in play-again:', error);
+      socket.emit('error', { message: 'Server error' });
+    }
   });
 
   socket.on('disconnect', async () => {
     console.log('User disconnected:', socket.user.username);
-    
+
     await User.findByIdAndUpdate(socket.user._id, {
       isOnline: false,
       lastActive: new Date()
@@ -262,5 +299,7 @@ io.on('connection', (socket) => {
       }
     }
   });
+
+});
 
 module.exports = app;
