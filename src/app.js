@@ -25,8 +25,20 @@ const app = express();
 
 connectDB();
 
+const allowedOrigins = [
+  "https://multiplayer-gaming-platform.vercel.app",
+  "https://multiplayer-gaming-platform-98xa.vercel.app",
+  process.env.CLIENT_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: ["https://multiplayer-gaming-platform.vercel.app", "http://localhost:3000"],
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -55,10 +67,19 @@ const server = app.listen(PORT, () => {
 
 const io = require('socket.io')(server, {
   cors: {
-    origin: ["https://multiplayer-gaming-platform.vercel.app", "http://localhost:3000"],
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
+        return callback(null, true);
+      }
+      return callback(new Error('Not allowed by CORS'));
+    },
     methods: ['GET', 'POST']
   }
 });
+
+// Expose io to external route controllers
+app.set('io', io);
 
 async function recalcWinRate(userId) {
   try {
@@ -226,10 +247,13 @@ io.on('connection', (socket) => {
           game.currentTurn = game.players[0].user; // host starts
           await game.save();
 
+          await game.populate('players.user', 'username');
           io.to(gameId).emit('game-start', game);
           io.to(gameId).emit('game-update', game);
         } else {
           await game.save();
+
+          await game.populate('players.user', 'username');
           io.to(gameId).emit('player-ready-update', {
             playerId: socket.user._id,
             game
