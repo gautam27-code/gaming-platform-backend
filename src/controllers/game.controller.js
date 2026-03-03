@@ -5,11 +5,11 @@ const mongoose = require('mongoose');
 // Helper function to check for a win in tic-tac-toe
 function checkWin(board) {
   const lines = [
-    [0,1,2],[3,4,5],[6,7,8],
-    [0,3,6],[1,4,7],[2,5,8],
-    [0,4,8],[2,4,6]
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
   ];
-  return lines.some(([a,b,c]) => 
+  return lines.some(([a, b, c]) =>
     board[a] && board[a] === board[b] && board[a] === board[c]
   );
 }
@@ -27,15 +27,15 @@ async function recalcWinRate(userId) {
       u.calculateWinRate();
       await u.save();
     }
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // Utility: compute AI move for tic-tac-toe
 function computeAIMove(board, aiSymbol = 'O', humanSymbol = 'X') {
   const lines = [
-    [0,1,2],[3,4,5],[6,7,8],
-    [0,3,6],[1,4,7],[2,5,8],
-    [0,4,8],[2,4,6]
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6]
   ];
 
   // Helper to check if a line has potential
@@ -49,7 +49,7 @@ function computeAIMove(board, aiSymbol = 'O', humanSymbol = 'X') {
   };
 
   // 1) Win if possible
-  for (const [a,b,c] of lines) {
+  for (const [a, b, c] of lines) {
     const lineVals = [board[a], board[b], board[c]];
     if (checkLine(lineVals, aiSymbol)) {
       if (board[a] === null) return a;
@@ -59,7 +59,7 @@ function computeAIMove(board, aiSymbol = 'O', humanSymbol = 'X') {
   }
 
   // 2) Block human win
-  for (const [a,b,c] of lines) {
+  for (const [a, b, c] of lines) {
     const lineVals = [board[a], board[b], board[c]];
     if (checkLine(lineVals, humanSymbol)) {
       if (board[a] === null) return a;
@@ -69,7 +69,7 @@ function computeAIMove(board, aiSymbol = 'O', humanSymbol = 'X') {
   }
 
   // 3) Create fork opportunity or block opponent's fork
-  for (const [a,b,c] of lines) {
+  for (const [a, b, c] of lines) {
     const lineVals = [board[a], board[b], board[c]];
     if (checkLine(lineVals, aiSymbol, 2)) {
       if (board[a] === null) return a;
@@ -82,18 +82,18 @@ function computeAIMove(board, aiSymbol = 'O', humanSymbol = 'X') {
   if (board[4] === null) return 4;
 
   // 5) Opposite corner of human
-  const oppositeCorners = [[0,8], [2,6]];
-  for (const [a,b] of oppositeCorners) {
+  const oppositeCorners = [[0, 8], [2, 6]];
+  for (const [a, b] of oppositeCorners) {
     if (board[a] === humanSymbol && board[b] === null) return b;
     if (board[b] === humanSymbol && board[a] === null) return a;
   }
 
   // 6) Empty corner
-  const corners = [0,2,6,8].filter(i => board[i] === null);
+  const corners = [0, 2, 6, 8].filter(i => board[i] === null);
   if (corners.length) return corners[Math.floor(Math.random() * corners.length)];
 
   // 7) Empty side
-  const sides = [1,3,5,7].filter(i => board[i] === null);
+  const sides = [1, 3, 5, 7].filter(i => board[i] === null);
   if (sides.length) return sides[Math.floor(Math.random() * sides.length)];
 
   return -1; // No moves available
@@ -129,9 +129,9 @@ exports.createRoom = async (req, res) => {
       game
     });
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error creating game room', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error creating game room',
+      error: error.message
     });
   }
 };
@@ -217,14 +217,23 @@ exports.joinRoom = async (req, res) => {
 
     await game.save();
 
+    // Populate players to ensure usernames are attached for the socket broadcast
+    await game.populate('players.user', 'username');
+
+    // Notify all clients in the room that the game state has changed (player joined)
+    const io = req.app.get('io');
+    if (io) {
+      io.to(game._id.toString()).emit('game-update', game);
+    }
+
     res.json({
       message: already ? 'Rejoined game room' : 'Joined game room successfully',
       game
     });
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error joining game room', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error joining game room',
+      error: error.message
     });
   }
 };
@@ -268,9 +277,9 @@ exports.makeMove = async (req, res) => {
   try {
     const { gameId } = req.params;
     const { row, col } = req.body;
-    
+
     const game = await Game.findById(gameId);
-    
+
     if (!game) {
       return res.status(404).json({ message: 'Game not found' });
     }
@@ -282,10 +291,10 @@ exports.makeMove = async (req, res) => {
     if (!game.currentTurn || !game.currentTurn.equals(req.user._id)) {
       return res.status(400).json({ message: 'Not your turn' });
     }
-    
+
     // Validate row/col inputs
     if (typeof row !== 'number' || typeof col !== 'number' ||
-        row < 0 || row >= 3 || col < 0 || col >= 3) {
+      row < 0 || row >= 3 || col < 0 || col >= 3) {
       return res.status(400).json({ message: 'Invalid row or column' });
     }
 
@@ -420,9 +429,9 @@ exports.getGameState = async (req, res) => {
 
     res.json(game);
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error fetching game state', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching game state',
+      error: error.message
     });
   }
 };
@@ -431,19 +440,19 @@ exports.getGameState = async (req, res) => {
 exports.getAvailableRooms = async (req, res) => {
   try {
     // Return all multiplayer rooms that are waiting or already in-progress (for visibility)
-    const rooms = await Game.find({ 
+    const rooms = await Game.find({
       mode: 'multi',
       status: { $in: ['waiting', 'in-progress'] }
     })
-    .sort({ createdAt: -1 })
-    .populate('players.user', 'username')
-    .select('name type roomCode players createdAt status');
+      .sort({ createdAt: -1 })
+      .populate('players.user', 'username')
+      .select('name type roomCode players createdAt status');
 
     res.json(rooms);
   } catch (error) {
-    res.status(500).json({ 
-      message: 'Error fetching available rooms', 
-      error: error.message 
+    res.status(500).json({
+      message: 'Error fetching available rooms',
+      error: error.message
     });
   }
 };
@@ -488,9 +497,10 @@ exports.setPlayerReady = async (req, res) => {
       message: 'Player ready status updated',
       game
     });
-    } catch (error) {
-    res.status(500).json({ 
-      message: 'Error updating ready status', 
-      error: error.message 
+  } catch (error) {
+    res.status(500).json({
+      message: 'Error updating ready status',
+      error: error.message
     });
-  }};
+  }
+};
