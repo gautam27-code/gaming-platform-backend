@@ -34,7 +34,7 @@ const allowedOrigins = [
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
+    if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.endsWith('.vercel.app')) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
@@ -69,12 +69,13 @@ const io = require('socket.io')(server, {
   cors: {
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:')) {
+      if (allowedOrigins.includes(origin) || origin.startsWith('http://localhost:') || origin.endsWith('.vercel.app')) {
         return callback(null, true);
       }
       return callback(new Error('Not allowed by CORS'));
     },
-    methods: ['GET', 'POST']
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
